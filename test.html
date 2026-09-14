@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上選擇題做答與評分系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --success-color: #16a34a;
+            --success-bg: #dcfce7;
+            --error-color: #dc2626;
+            --error-bg: #fee2e2;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 800px; margin: 0 auto; }
+        header { margin-bottom: 30px; text-align: center; }
+        header h1 { font-size: 28px; color: #0f172a; margin-bottom: 8px; }
+        header p { color: var(--text-muted); font-size: 15px; }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #0f172a;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
+        }
+
+        label { display: block; font-weight: 500; margin-bottom: 8px; font-size: 14px; }
+        select, input[type="text"] {
+            width: 100%; padding: 10px 14px; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 14px; background-color: #fff; margin-bottom: 16px;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 10px 24px; font-size: 15px; font-weight: 500;
+            border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s;
+            width: 100%;
+        }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-success { background-color: var(--success-color); color: white; }
+        .btn-success:hover { background-color: #15803d; }
+        .btn-secondary { background-color: #f59e0b; color: white; }
+        .btn-secondary:hover { background-color: #d97706; }
+
+        /* 考題介面樣式 */
+        .question-block {
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 0;
+            position: relative;
+        }
+        .question-block:last-child { border-bottom: none; }
+        .question-text { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #0f172a; }
+        
+        .options-group { display: flex; flex-direction: column; gap: 8px; }
+        .option-label {
+            display: flex; align-items: center; padding: 10px 14px;
+            border: 1px solid var(--border-color); border-radius: 6px;
+            cursor: pointer; transition: background-color 0.15s; font-size: 14px;
+        }
+        .option-label:hover { background-color: #f1f5f9; }
+        .option-label input { margin-right: 10px; transform: scale(1.1); }
+
+        /* 答案與詳解結果樣式 */
+        .explanation-box {
+            margin-top: 14px; padding: 12px 16px; border-radius: 6px;
+            background-color: #f8fafc; border-left: 4px solid #94a3b8;
+            font-size: 14px; display: none;
+        }
+        
+        /* 答題對錯動態樣式 */
+        .question-block.correct { background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 10px; }
+        .question-block.wrong { background-color: #fef2f2; padding: 20px; border-radius: 8px; margin-bottom: 10px; }
+        .option-label.correct-choice { background-color: #bbf7d0; border-color: #22c55e; color: #14532d; font-weight: bold; }
+        .option-label.wrong-choice { background-color: #fecaca; border-color: #ef4444; color: #7f1d1d; }
+
+        /* 成績結算看版 */
+        #scoreBoard {
+            text-align: center; display: none;
+            background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+            color: #312e81; padding: 30px; border-radius: 12px; margin-bottom: 24px;
+        }
+        .score-number { font-size: 48px; font-weight: 800; color: #4338ca; margin: 10px 0; }
+
+        /* 錯題提示框 */
+        .wrong-questions-banner {
+            background-color: #fee2e2;
+            border: 2px solid #fca5a5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .wrong-questions-banner.show { display: block; }
+        .wrong-questions-title {
+            font-weight: 700;
+            color: #991b1b;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .wrong-questions-list {
+            font-size: 14px;
+            color: #7f1d1d;
+            word-break: break-word;
+            font-family: 'Courier New', monospace;
+            background-color: #fef2f2;
+            padding: 10px;
+            border-radius: 4px;
+            line-height: 1.8;
+        }
+
+        /* 成績按鈕組 */
+        .score-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            .score-actions {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .score-actions .btn {
+            width: 100%;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>線上選擇題做答與評分系統</h1>
+        <p>選擇單元即可開始測驗，系統將自動記錄成績與錯題</p>
+    </header>
+
+    <div class="card" id="setupCard">
+        <div class="card-title">🎯 選擇測驗範圍</div>
+        <label for="categorySelect">請選擇學科與單元</label>
+        <select id="categorySelect">
+            <option value="" disabled selected>正在載入單元分類...</option>
+        </select>
+
+        <label for="rangeInput">指定題號範圍（選填，留空則出全部題目）</label>
+        <input type="text" id="rangeInput" placeholder="例如: 1,3,5 或 1-5 或 1,3,5-10">
+        
+        <button class="btn btn-primary" onclick="startQuiz()">開始測驗</button>
+    </div>
+
+    <div id="scoreBoard" class="card">
+        <h2>測驗結束</h2>
+        <div class="score-number" id="finalScore">0 分</div>
+        <p id="scoreDetail">答對 0 題 / 總共 0 題</p>
+        
+        <!-- 錯題提示框 -->
+        <div class="wrong-questions-banner" id="wrongQuestionsBanner">
+            <div class="wrong-questions-title">❌ 測驗完錯誤的題號：</div>
+            <div class="wrong-questions-list" id="wrongQuestionsList"></div>
+        </div>
+        
+        <div class="score-actions">
+            <button class="btn btn-primary" onclick="location.reload()">再測一次</button>
+            <button class="btn btn-secondary" onclick="goToMarkedQuestions()">查看錯題本 ❌</button>
+        </div>
+    </div>
+
+    <div class="card" id="quizCard" style="display: none;">
+        <div class="card-title" id="quizTitle">題目加載中...</div>
+        <form id="quizForm" onsubmit="submitQuiz(event)">
+            <div id="questionsContainer"></div>
+            <div style="margin-top: 24px;">
+                <button type="submit" class="btn btn-success" id="submitBtn">提交試卷並評分</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // 內嵌您的 Supabase 專案金鑰
+    const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 從實際使用者驗證取得 user_id
+    let currentUserId = null; 
+
+    let currentQuestions = [];
+    // 保存題目與題號的對應關係
+    let questionNumberMap = {};
+
+    // 頁面載入後先進行使用者驗證，再自動取得分類選單
+    document.addEventListener("DOMContentLoaded", async () => {
+        // 步驟 1: 取得登入的使用者
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        if (!user) {
+            alert("請先登入系統以使用測驗功能！");
+            window.location.href = "auth.html";
+            return;
+        }
+        
+        currentUserId = user.id;
+        
+        // 步驟 2: 載入分類選單
+        const select = document.getElementById("categorySelect");
+        
+        const { data, error } = await supabaseClient
+            .from('categories')
+            .select('*')
+            .order('id', { ascending: true });
+
+        if (error || !data || data.length === 0) {
+            select.innerHTML = '<option value="" disabled>無法載入分類，請先至分類管理建立單元</option>';
+            return;
+        }
+
+        select.innerHTML = data.map(c => `
+            <option value="${c.id}">${escapeHtml(c.subject_name)} — ${escapeHtml(c.unit_name)}</option>
+        `).join('');
+    });
+
+    // 解析使用者輸入的範圍字串 (如 "1,3,5" 或 "1-5")
+    function parseRangeString(rangeStr, maxCount) {
+        if (!rangeStr.trim()) return null; // 留空代表選全部
+        
+        const selectedIndices = new Set();
+        // 支援中文逗號和英文逗號，並用其切分
+        const parts = rangeStr.replace(/，/g, ',').split(',');
+
+        parts.forEach(part => {
+            part = part.trim();
+            if (/^\d+-\d+$/.test(part)) {
+                // 處理範圍型如 "1-5"
+                const [start, end] = part.split('-').map(Number);
+                const min = Math.min(start, end);
+                const max = Math.max(start, end);
+                for (let i = min; i <= max; i++) {
+                    if (i >= 1 && i <= maxCount) {
+                        selectedIndices.add(i - 1); // 轉成以 0 開始的陣列索引
+                    }
+                }
+            } else if (/^\d+$/.test(part)) {
+                // 處理單一數字型如 "3"
+                const num = Number(part);
+                if (num >= 1 && num <= maxCount) {
+                    selectedIndices.add(num - 1);
+                }
+            }
+        });
+
+        return Array.from(selectedIndices).sort((a, b) => a - b);
+    }
+
+    // 開始測驗：抓取題目
+    async function startQuiz() {
+        const categoryId = document.getElementById("categorySelect").value;
+        if (!categoryId) return;
+
+        // 撈取該單元所有題目 (依原始順序排序，確保題號一致)
+        const { data, error } = await supabaseClient
+            .from('questions')
+            .select('*')
+            .eq('category_id', categoryId)
+            .order('id', { ascending: true });
+
+        if (error) {
+            alert("撈取題目失敗: " + error.message);
+            return;
+        }
+
+        if (!data || data.length === 0) {
+            alert("此單元目前尚未上傳任何題目，請先去上傳題庫！");
+            return;
+        }
+
+        // --- 核心修改：範圍篩選邏輯 ---
+        const rangeInputValue = document.getElementById("rangeInput").value;
+        const targetIndices = parseRangeString(rangeInputValue, data.length);
+        
+        let filteredQuestions = [];
+        if (targetIndices === null) {
+            // 使用者沒輸入範圍，直接出全部
+            filteredQuestions = data;
+        } else {
+            // 根據解析出的索引抽題
+            if (targetIndices.length === 0) {
+                alert(`請輸入正確的題號範圍！該單元總共有 ${data.length} 題。`);
+                return;
+            }
+            filteredQuestions = targetIndices.map(index => data[index]);
+        }
+        // ------------------------------
+
+        currentQuestions = filteredQuestions;
+        
+        // 建立題號對應表
+        questionNumberMap = {};
+        filteredQuestions.forEach((q, idx) => {
+            questionNumberMap[q.id] = idx + 1;
+        });
+        
+        // 隱藏設定卡片，顯示題目卡片
+        document.getElementById("setupCard").style.display = "none";
+        document.getElementById("quizCard").style.display = "block";
+        
+        const selectedText = document.getElementById("categorySelect").options[document.getElementById("categorySelect").selectedIndex].text;
+        document.getElementById("quizTitle").innerText = `📝 測驗單元：${selectedText} (自選共 ${filteredQuestions.length} 題)`;
+
+        renderQuestions(filteredQuestions);
+    }
+
+    // 渲染題目到 HTML 頁面
+    function renderQuestions(questions) {
+        const container = document.getElementById("questionsContainer");
+        container.innerHTML = questions.map((q, index) => `
+            <div class="question-block" id="qBlock_${q.id}">
+                <div class="question-text">${index + 1}. ${escapeHtml(q.question_text)}</div>
+                <div class="options-group">
+                    <label class="option-label" id="label_${q.id}_A">
+                        <input type="radio" name="question_${q.id}" value="A" required> A) ${escapeHtml(q.option_a)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_B">
+                        <input type="radio" name="question_${q.id}" value="B"> B) ${escapeHtml(q.option_b)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_C">
+                        <input type="radio" name="question_${q.id}" value="C"> C) ${escapeHtml(q.option_c)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_D">
+                        <input type="radio" name="question_${q.id}" value="D"> D) ${escapeHtml(q.option_d)}
+                    </label>
+                </div>
+                <div class="explanation-box" id="expl_${q.id}">
+                    <strong>💡 正確答案：${q.correct_answer}</strong><br>
+                    <span style="color: var(--text-muted);">解析：${escapeHtml(q.explanation || '無詳細解答說明')}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 提交考卷與評分邏輯
+    async function submitQuiz(event) {
+        event.preventDefault();
+        
+        document.getElementById("submitBtn").disabled = true;
+        document.getElementById("submitBtn").innerText = "正在結算並記錄歷史成績...";
+
+        let correctCount = 0;
+        const totalQuestions = currentQuestions.length;
+        const wrongQuestionIds = [];
+        const wrongQuestionNumbers = [];
+
+        currentQuestions.forEach(q => {
+            const radioGroup = document.getElementsByName(`question_${q.id}`);
+            let userAns = "";
+            
+            for (let i = 0; i < radioGroup.length; i++) {
+                radioGroup[i].disabled = true; 
+                if (radioGroup[i].checked) {
+                    userAns = radioGroup[i].value;
+                }
+            }
+
+            const block = document.getElementById(`qBlock_${q.id}`);
+            const explBox = document.getElementById(`expl_${q.id}`);
+            
+            explBox.style.display = "block";
+
+            if (userAns === q.correct_answer) {
+                correctCount++;
+                block.classList.add("correct");
+                document.getElementById(`label_${q.id}_${q.correct_answer}`).classList.add("correct-choice");
+            } else {
+                wrongQuestionIds.push(q.id);
+                wrongQuestionNumbers.push(questionNumberMap[q.id]);
+                block.classList.add("wrong");
+                document.getElementById(`label_${q.id}_${q.correct_answer}`).classList.add("correct-choice");
+                if (userAns) {
+                    document.getElementById(`label_${q.id}_${userAns}`).classList.add("wrong-choice");
+                }
+            }
+        });
+
+        const finalScore = Math.round((correctCount / totalQuestions) * 100);
+        const testedAt = new Date().toISOString();
+
+        // 寫入測驗紀錄表
+        const { error: recordError } = await supabaseClient
+            .from('quiz_records')
+            .insert([{
+                user_id: currentUserId,
+                score: finalScore,
+                total_questions: totalQuestions,
+                tested_at: testedAt
+            }]);
+        
+        if (recordError) console.error("成績紀錄寫入失敗:", recordError.message);
+
+        // 將寫錯的題目紀錄至錯題標記表
+        if (wrongQuestionIds.length > 0) {
+            const upsertData = wrongQuestionIds.map(qId => ({
+                user_id: currentUserId,
+                question_id: qId,
+                is_wrong_history: true,
+                wrong_at: testedAt
+            }));
+
+            const { error: markError } = await supabaseClient
+                .from('marked_questions')
+                .upsert(upsertData, { onConflict: 'user_id,question_id' });
+
+            if (markError) console.error("錯題本更新失敗:", markError.message);
+        }
+
+        // 顯示分數結算看板
+        document.getElementById("scoreBoard").style.display = "block";
+        document.getElementById("finalScore").innerText = `${finalScore} 分`;
+        document.getElementById("scoreDetail").innerText = `答對 ${correctCount} 題 / 總共 ${totalQuestions} 題（已將 ${wrongQuestionIds.length} 筆錯題自動同步至您的錯題本）`;
+        
+        // 顯示錯題提示框
+        if (wrongQuestionNumbers.length > 0) {
+            const wrongNumbersStr = wrongQuestionNumbers.join(', ');
+            document.getElementById("wrongQuestionsList").innerText = wrongNumbersStr;
+            document.getElementById("wrongQuestionsBanner").classList.add("show");
+        }
+        
+        document.getElementById("submitBtn").style.display = "none";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 導向到錯題管理頁面
+    function goToMarkedQuestions() {
+        window.location.href = "marked_questions_manager.html";
+    }
+
+    // 網頁編碼防護
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+</script>
+
+</body>
+</html>
