@@ -11,7 +11,7 @@
     
     <style>
         :root {
-            --primary-color: #ef4444; /* 錯題模式使用紅色系主色 */
+            --primary-color: #ef4444; /* 錯題模式主要配色：紅色系 */
             --primary-hover: #dc2626;
             --bg-color: #f8fafc;
             --card-bg: #ffffff;
@@ -161,12 +161,12 @@
 <div class="container">
     <header>
         <h1>❌ 錯題重測與強化複習系統</h1>
-        <p>系統已為您自動彙整過往答錯的題目，進行二次測驗以強化記憶</p>
+        <p>系統已自動為您彙整過往答錯的題目，幫助您二次重測並攻克錯題</p>
     </header>
 
     <div class="card" id="setupCard">
         <div class="card-title">🎯 選擇錯題複習範圍</div>
-        <label for="categorySelect">選擇特定學科與單元（預設：全部錯題）</label>
+        <label for="categorySelect">選擇學科與單元（預設：全部錯題）</label>
         <select id="categorySelect">
             <option value="ALL">載入中...</option>
         </select>
@@ -184,18 +184,18 @@
         
         <!-- 錯題提示框 -->
         <div class="wrong-questions-banner" id="wrongQuestionsBanner">
-            <div class="wrong-questions-title">⚠️ 仍舊答錯的題號：</div>
+            <div class="wrong-questions-title">⚠️ 本次依然答錯的題號：</div>
             <div class="wrong-questions-list" id="wrongQuestionsList"></div>
         </div>
         
         <div class="score-actions">
             <button class="btn btn-primary" onclick="location.reload()">再測一次</button>
-            <button class="btn btn-secondary" onclick="goToMarkedQuestions()">管理錯題本 ❌</button>
+            <button class="btn btn-secondary" onclick="goToMarkedQuestions()">檢視錯題本 ❌</button>
         </div>
     </div>
 
     <div class="card" id="quizCard" style="display: none;">
-        <div class="card-title" id="quizTitle">題目加載中...</div>
+        <div class="card-title" id="quizTitle">題目載入中...</div>
         <form id="quizForm" onsubmit="submitQuiz(event)">
             <div id="questionsContainer"></div>
             <div style="margin-top: 24px;">
@@ -206,6 +206,7 @@
 </div>
 
 <script>
+    // Supabase 設定[cite: 1]
     const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";
     const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -214,18 +215,19 @@
     let currentQuestions = [];
     let questionNumberMap = {};
 
+    // 頁面初始化[cite: 1]
     document.addEventListener("DOMContentLoaded", async () => {
         const { data: { user } } = await supabaseClient.auth.getUser();
         
         if (!user) {
-            alert("請先登入系統以存取錯題紀錄！");
+            alert("請先登入系統以取得您的錯題紀錄！");
             window.location.href = "auth.html";
             return;
         }
         
         currentUserId = user.id;
         
-        // 載入該使用者有錯題紀錄的分類選單
+        // 載入分類選單
         const select = document.getElementById("categorySelect");
         
         const { data, error } = await supabaseClient
@@ -246,7 +248,7 @@
         select.innerHTML = optionsHtml;
     });
 
-    // 解析範圍字串
+    // 解析題號範圍字串 (如 "1,3,5" 或 "1-5")[cite: 1]
     function parseRangeString(rangeStr, maxCount) {
         if (!rangeStr.trim()) return null;
         
@@ -275,79 +277,72 @@
         return Array.from(selectedIndices).sort((a, b) => a - b);
     }
 
-    // 開始錯題重測：核心改動為向 marked_questions 關聯撈取題目
+    // 開始錯題重測：採用【兩階段查詢】確保能夠正確取得錯題
     async function startQuiz() {
         const categoryId = document.getElementById("categorySelect").value;
 
-        // 向 marked_questions 撈取該使用者的錯題，並 INNER JOIN 題目主表 (questions)
-        let query = supabaseClient
+        // 步驟 1：先從 marked_questions 取得目前使用者標記為錯題 (is_wrong_history = true) 的列表
+        const { data: markedData, error: markedError } = await supabaseClient
             .from('marked_questions')
-            .select(`
-                question_id,
-                is_wrong_history,
-                is_bookmarked,
-                questions!inner (
-                    id,
-                    category_id,
-                    question_text,
-                    option_a,
-                    option_b,
-                    option_c,
-                    option_d,
-                    correct_answer,
-                    explanation,
-                    question_number
-                )
-            `)
+            .select('question_id')
             .eq('user_id', currentUserId)
-            .eq('is_wrong_history', true); // 限定已錯答的題目
+            .eq('is_wrong_history', true);
 
-        const { data: markedData, error } = await query;
-
-        if (error) {
-            alert("撈取錯題失敗: " + error.message);
+        if (markedError) {
+            alert("撈取錯題標記失敗: " + markedError.message);
             return;
         }
 
         if (!markedData || markedData.length === 0) {
-            alert("太棒了！您目前沒有任何未攻克的錯題！");
+            alert("太棒了！您目前沒有任何未攻克的錯題紀錄。");
             return;
         }
 
-        // 提取展平的題目資料
-        let extractedQuestions = markedData.map(item => item.questions);
+        // 彙整錯題的 question_id[cite: 2]
+        const wrongQuestionIds = markedData.map(item => item.question_id);
 
-        // 如果有指定單元分類，進行資料過濾
+        // 步驟 2：使用 IN 條件撈取對應題目的詳細資料[cite: 2]
+        let query = supabaseClient
+            .from('questions')
+            .select('*')
+            .in('id', wrongQuestionIds)
+            .order('id', { ascending: true });
+
+        // 若選擇特定單元則加入過濾條件[cite: 2]
         if (categoryId !== "ALL") {
-            extractedQuestions = extractedQuestions.filter(q => q.category_id == categoryId);
+            query = query.eq('category_id', categoryId);
         }
 
-        if (extractedQuestions.length === 0) {
-            alert("該選擇單元下沒有您的錯題紀錄！");
+        const { data: questionsData, error: qError } = await query;
+
+        if (qError) {
+            alert("撈取題目內容失敗: " + qError.message);
             return;
         }
 
-        // 按題目 ID 或題號排序
-        extractedQuestions.sort((a, b) => a.id - b.id);
+        if (!questionsData || questionsData.length === 0) {
+            alert("在選定的單元下沒有您的錯題紀錄！");
+            return;
+        }
 
-        // 依據使用者輸入的題號範圍篩選
+        // 依據輸入的範圍條件進一步篩選[cite: 1]
         const rangeInputValue = document.getElementById("rangeInput").value;
-        const targetIndices = parseRangeString(rangeInputValue, extractedQuestions.length);
+        const targetIndices = parseRangeString(rangeInputValue, questionsData.length);
         
         let filteredQuestions = [];
         if (targetIndices === null) {
-            filteredQuestions = extractedQuestions;
+            filteredQuestions = questionsData;
         } else {
             if (targetIndices.length === 0) {
-                alert(`請輸入正確範圍，當前選定條件下共 ${extractedQuestions.length} 題錯題。`);
+                alert(`請輸入正確範圍，當前條件下共 ${questionsData.length} 題錯題。`);
                 return;
             }
-            filteredQuestions = targetIndices.map(index => extractedQuestions[index]);
+            filteredQuestions = targetIndices.map(index => questionsData[index]);
         }
 
         currentQuestions = filteredQuestions;
         
-        // 建立題號對應表
+        // 建立題目序號對應表[cite: 1]
         questionNumberMap = {};
         filteredQuestions.forEach((q, idx) => {
             questionNumberMap[q.id] = idx + 1;
@@ -362,7 +357,7 @@
         renderQuestions(filteredQuestions);
     }
 
-    // 渲染題目列表
+    // 渲染題目到頁面上[cite: 1]
     function renderQuestions(questions) {
         const container = document.getElementById("questionsContainer");
         container.innerHTML = questions.map((q, index) => `
@@ -390,7 +385,7 @@
         `).join('');
     }
 
-    // 提交測驗與寫回狀態
+    // 提交測驗與評分更新[cite: 1, 2]
     async function submitQuiz(event) {
         event.preventDefault();
         
@@ -438,7 +433,7 @@
         const finalScore = Math.round((correctCount / totalQuestions) * 100);
         const testedAt = new Date().toISOString();
 
-        // 寫入測驗紀錄
+        // 1. 紀錄測驗分數至 quiz_records 表[cite: 2]
         await supabaseClient
             .from('quiz_records')
             .insert([{
@@ -448,7 +443,7 @@
                 tested_at: testedAt
             }]);
 
-        // 答對的題目：從「錯題紀錄」中移除（設定 is_wrong_history = false）
+        // 2. 本次重測【答對】的題目：解除錯題註記（is_wrong_history 設為 false）[cite: 2]
         if (correctQuestionIds.length > 0) {
             const correctUpserts = correctQuestionIds.map(qId => ({
                 user_id: currentUserId,
@@ -462,7 +457,7 @@
                 .upsert(correctUpserts, { onConflict: 'user_id,question_id' });
         }
 
-        // 依然答錯的題目：更新錯題時間
+        // 3. 本次重測【依然答錯】的題目：更新錯題記錄時間[cite: 2]
         if (wrongQuestionIds.length > 0) {
             const wrongUpserts = wrongQuestionIds.map(qId => ({
                 user_id: currentUserId,
@@ -476,10 +471,10 @@
                 .upsert(wrongUpserts, { onConflict: 'user_id,question_id' });
         }
 
-        // 顯示看板與更新說明
+        // 顯示成績看板[cite: 1]
         document.getElementById("scoreBoard").style.display = "block";
         document.getElementById("finalScore").innerText = `${finalScore} 分`;
-        document.getElementById("scoreDetail").innerText = `本次答對 ${correctCount} 題，已為您將 ${correctCount} 筆題目從錯題本中消滅！`;
+        document.getElementById("scoreDetail").innerText = `本次答對 ${correctCount} 題，已成功幫您將 ${correctCount} 筆錯題從錯題本清除！`;
         
         if (wrongQuestionNumbers.length > 0) {
             const wrongNumbersStr = wrongQuestionNumbers.join(', ');
