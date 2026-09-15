@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>錯題重測與複習系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #ef4444; /* 錯題模式使用紅色系主色 */
+            --primary-hover: #dc2626;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --success-color: #16a34a;
+            --success-bg: #dcfce7;
+            --error-color: #dc2626;
+            --error-bg: #fee2e2;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 800px; margin: 0 auto; }
+        header { margin-bottom: 30px; text-align: center; }
+        header h1 { font-size: 28px; color: #0f172a; margin-bottom: 8px; }
+        header p { color: var(--text-muted); font-size: 15px; }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #0f172a;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
+        }
+
+        label { display: block; font-weight: 500; margin-bottom: 8px; font-size: 14px; }
+        select, input[type="text"] {
+            width: 100%; padding: 10px 14px; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 14px; background-color: #fff; margin-bottom: 16px;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 10px 24px; font-size: 15px; font-weight: 500;
+            border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s;
+            width: 100%;
+        }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-success { background-color: var(--success-color); color: white; }
+        .btn-success:hover { background-color: #15803d; }
+        .btn-secondary { background-color: #f59e0b; color: white; }
+        .btn-secondary:hover { background-color: #d97706; }
+
+        /* 考題介面樣式 */
+        .question-block {
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 0;
+            position: relative;
+        }
+        .question-block:last-child { border-bottom: none; }
+        .question-text { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #0f172a; }
+        
+        .options-group { display: flex; flex-direction: column; gap: 8px; }
+        .option-label {
+            display: flex; align-items: center; padding: 10px 14px;
+            border: 1px solid var(--border-color); border-radius: 6px;
+            cursor: pointer; transition: background-color 0.15s; font-size: 14px;
+        }
+        .option-label:hover { background-color: #f1f5f9; }
+        .option-label input { margin-right: 10px; transform: scale(1.1); }
+
+        /* 答案與詳解結果樣式 */
+        .explanation-box {
+            margin-top: 14px; padding: 12px 16px; border-radius: 6px;
+            background-color: #f8fafc; border-left: 4px solid #94a3b8;
+            font-size: 14px; display: none;
+        }
+        
+        /* 答題對錯動態樣式 */
+        .question-block.correct { background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 10px; }
+        .question-block.wrong { background-color: #fef2f2; padding: 20px; border-radius: 8px; margin-bottom: 10px; }
+        .option-label.correct-choice { background-color: #bbf7d0; border-color: #22c55e; color: #14532d; font-weight: bold; }
+        .option-label.wrong-choice { background-color: #fecaca; border-color: #ef4444; color: #7f1d1d; }
+
+        /* 成績結算看版 */
+        #scoreBoard {
+            text-align: center; display: none;
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #991b1b; padding: 30px; border-radius: 12px; margin-bottom: 24px;
+        }
+        .score-number { font-size: 48px; font-weight: 800; color: #dc2626; margin: 10px 0; }
+
+        /* 錯題提示框 */
+        .wrong-questions-banner {
+            background-color: #ffffff;
+            border: 2px solid #fca5a5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .wrong-questions-banner.show { display: block; }
+        .wrong-questions-title {
+            font-weight: 700;
+            color: #991b1b;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .wrong-questions-list {
+            font-size: 14px;
+            color: #7f1d1d;
+            word-break: break-word;
+            font-family: 'Courier New', monospace;
+            background-color: #fef2f2;
+            padding: 10px;
+            border-radius: 4px;
+            line-height: 1.8;
+        }
+
+        /* 成績按鈕組 */
+        .score-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            .score-actions { grid-template-columns: 1fr; }
+        }
+        
+        .score-actions .btn { width: 100%; margin: 0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>❌ 錯題重測與強化複習系統</h1>
+        <p>系統已為您自動彙整過往答錯的題目，進行二次測驗以強化記憶</p>
+    </header>
+
+    <div class="card" id="setupCard">
+        <div class="card-title">🎯 選擇錯題複習範圍</div>
+        <label for="categorySelect">選擇特定學科與單元（預設：全部錯題）</label>
+        <select id="categorySelect">
+            <option value="ALL">載入中...</option>
+        </select>
+
+        <label for="rangeInput">指定題號範圍（選填，留空則測驗全部錯題）</label>
+        <input type="text" id="rangeInput" placeholder="例如: 1,3,5 或 1-5 或 1,3,5-10">
+        
+        <button class="btn btn-primary" onclick="startQuiz()">開始錯題重測</button>
+    </div>
+
+    <div id="scoreBoard" class="card">
+        <h2>重測結束</h2>
+        <div class="score-number" id="finalScore">0 分</div>
+        <p id="scoreDetail">答對 0 題 / 總共 0 題</p>
+        
+        <!-- 錯題提示框 -->
+        <div class="wrong-questions-banner" id="wrongQuestionsBanner">
+            <div class="wrong-questions-title">⚠️ 仍舊答錯的題號：</div>
+            <div class="wrong-questions-list" id="wrongQuestionsList"></div>
+        </div>
+        
+        <div class="score-actions">
+            <button class="btn btn-primary" onclick="location.reload()">再測一次</button>
+            <button class="btn btn-secondary" onclick="goToMarkedQuestions()">管理錯題本 ❌</button>
+        </div>
+    </div>
+
+    <div class="card" id="quizCard" style="display: none;">
+        <div class="card-title" id="quizTitle">題目加載中...</div>
+        <form id="quizForm" onsubmit="submitQuiz(event)">
+            <div id="questionsContainer"></div>
+            <div style="margin-top: 24px;">
+                <button type="submit" class="btn btn-success" id="submitBtn">提交重測結果</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUserId = null; 
+    let currentQuestions = [];
+    let questionNumberMap = {};
+
+    document.addEventListener("DOMContentLoaded", async () => {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        if (!user) {
+            alert("請先登入系統以存取錯題紀錄！");
+            window.location.href = "auth.html";
+            return;
+        }
+        
+        currentUserId = user.id;
+        
+        // 載入該使用者有錯題紀錄的分類選單
+        const select = document.getElementById("categorySelect");
+        
+        const { data, error } = await supabaseClient
+            .from('categories')
+            .select('*')
+            .order('id', { ascending: true });
+
+        if (error || !data) {
+            select.innerHTML = '<option value="ALL">全部單元錯題</option>';
+            return;
+        }
+
+        let optionsHtml = '<option value="ALL">全部單元錯題</option>';
+        optionsHtml += data.map(c => `
+            <option value="${c.id}">${escapeHtml(c.subject_name)} — ${escapeHtml(c.unit_name)}</option>
+        `).join('');
+        
+        select.innerHTML = optionsHtml;
+    });
+
+    // 解析範圍字串
+    function parseRangeString(rangeStr, maxCount) {
+        if (!rangeStr.trim()) return null;
+        
+        const selectedIndices = new Set();
+        const parts = rangeStr.replace(/，/g, ',').split(',');
+
+        parts.forEach(part => {
+            part = part.trim();
+            if (/^\d+-\d+$/.test(part)) {
+                const [start, end] = part.split('-').map(Number);
+                const min = Math.min(start, end);
+                const max = Math.max(start, end);
+                for (let i = min; i <= max; i++) {
+                    if (i >= 1 && i <= maxCount) {
+                        selectedIndices.add(i - 1);
+                    }
+                }
+            } else if (/^\d+$/.test(part)) {
+                const num = Number(part);
+                if (num >= 1 && num <= maxCount) {
+                    selectedIndices.add(num - 1);
+                }
+            }
+        });
+
+        return Array.from(selectedIndices).sort((a, b) => a - b);
+    }
+
+    // 開始錯題重測：核心改動為向 marked_questions 關聯撈取題目
+    async function startQuiz() {
+        const categoryId = document.getElementById("categorySelect").value;
+
+        // 向 marked_questions 撈取該使用者的錯題，並 INNER JOIN 題目主表 (questions)
+        let query = supabaseClient
+            .from('marked_questions')
+            .select(`
+                question_id,
+                is_wrong_history,
+                is_bookmarked,
+                questions!inner (
+                    id,
+                    category_id,
+                    question_text,
+                    option_a,
+                    option_b,
+                    option_c,
+                    option_d,
+                    correct_answer,
+                    explanation,
+                    question_number
+                )
+            `)
+            .eq('user_id', currentUserId)
+            .eq('is_wrong_history', true); // 限定已錯答的題目
+
+        const { data: markedData, error } = await query;
+
+        if (error) {
+            alert("撈取錯題失敗: " + error.message);
+            return;
+        }
+
+        if (!markedData || markedData.length === 0) {
+            alert("太棒了！您目前沒有任何未攻克的錯題！");
+            return;
+        }
+
+        // 提取展平的題目資料
+        let extractedQuestions = markedData.map(item => item.questions);
+
+        // 如果有指定單元分類，進行資料過濾
+        if (categoryId !== "ALL") {
+            extractedQuestions = extractedQuestions.filter(q => q.category_id == categoryId);
+        }
+
+        if (extractedQuestions.length === 0) {
+            alert("該選擇單元下沒有您的錯題紀錄！");
+            return;
+        }
+
+        // 按題目 ID 或題號排序
+        extractedQuestions.sort((a, b) => a.id - b.id);
+
+        // 依據使用者輸入的題號範圍篩選
+        const rangeInputValue = document.getElementById("rangeInput").value;
+        const targetIndices = parseRangeString(rangeInputValue, extractedQuestions.length);
+        
+        let filteredQuestions = [];
+        if (targetIndices === null) {
+            filteredQuestions = extractedQuestions;
+        } else {
+            if (targetIndices.length === 0) {
+                alert(`請輸入正確範圍，當前選定條件下共 ${extractedQuestions.length} 題錯題。`);
+                return;
+            }
+            filteredQuestions = targetIndices.map(index => extractedQuestions[index]);
+        }
+
+        currentQuestions = filteredQuestions;
+        
+        // 建立題號對應表
+        questionNumberMap = {};
+        filteredQuestions.forEach((q, idx) => {
+            questionNumberMap[q.id] = idx + 1;
+        });
+        
+        document.getElementById("setupCard").style.display = "none";
+        document.getElementById("quizCard").style.display = "block";
+        
+        const selectedText = document.getElementById("categorySelect").options[document.getElementById("categorySelect").selectedIndex].text;
+        document.getElementById("quizTitle").innerText = `🔥 錯題重測模式：${selectedText} (共 ${filteredQuestions.length} 題)`;
+
+        renderQuestions(filteredQuestions);
+    }
+
+    // 渲染題目列表
+    function renderQuestions(questions) {
+        const container = document.getElementById("questionsContainer");
+        container.innerHTML = questions.map((q, index) => `
+            <div class="question-block" id="qBlock_${q.id}">
+                <div class="question-text">${index + 1}. ${escapeHtml(q.question_text)}</div>
+                <div class="options-group">
+                    <label class="option-label" id="label_${q.id}_A">
+                        <input type="radio" name="question_${q.id}" value="A" required> A) ${escapeHtml(q.option_a)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_B">
+                        <input type="radio" name="question_${q.id}" value="B"> B) ${escapeHtml(q.option_b)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_C">
+                        <input type="radio" name="question_${q.id}" value="C"> C) ${escapeHtml(q.option_c)}
+                    </label>
+                    <label class="option-label" id="label_${q.id}_D">
+                        <input type="radio" name="question_${q.id}" value="D"> D) ${escapeHtml(q.option_d)}
+                    </label>
+                </div>
+                <div class="explanation-box" id="expl_${q.id}">
+                    <strong>💡 正確答案：${q.correct_answer}</strong><br>
+                    <span style="color: var(--text-muted);">解析：${escapeHtml(q.explanation || '無詳細解答說明')}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 提交測驗與寫回狀態
+    async function submitQuiz(event) {
+        event.preventDefault();
+        
+        document.getElementById("submitBtn").disabled = true;
+        document.getElementById("submitBtn").innerText = "正在結算重測結果...";
+
+        let correctCount = 0;
+        const totalQuestions = currentQuestions.length;
+        const wrongQuestionIds = [];
+        const correctQuestionIds = [];
+        const wrongQuestionNumbers = [];
+
+        currentQuestions.forEach(q => {
+            const radioGroup = document.getElementsByName(`question_${q.id}`);
+            let userAns = "";
+            
+            for (let i = 0; i < radioGroup.length; i++) {
+                radioGroup[i].disabled = true; 
+                if (radioGroup[i].checked) {
+                    userAns = radioGroup[i].value;
+                }
+            }
+
+            const block = document.getElementById(`qBlock_${q.id}`);
+            const explBox = document.getElementById(`expl_${q.id}`);
+            
+            explBox.style.display = "block";
+
+            if (userAns === q.correct_answer) {
+                correctCount++;
+                correctQuestionIds.push(q.id);
+                block.classList.add("correct");
+                document.getElementById(`label_${q.id}_${q.correct_answer}`).classList.add("correct-choice");
+            } else {
+                wrongQuestionIds.push(q.id);
+                wrongQuestionNumbers.push(questionNumberMap[q.id]);
+                block.classList.add("wrong");
+                document.getElementById(`label_${q.id}_${q.correct_answer}`).classList.add("correct-choice");
+                if (userAns) {
+                    document.getElementById(`label_${q.id}_${userAns}`).classList.add("wrong-choice");
+                }
+            }
+        });
+
+        const finalScore = Math.round((correctCount / totalQuestions) * 100);
+        const testedAt = new Date().toISOString();
+
+        // 寫入測驗紀錄
+        await supabaseClient
+            .from('quiz_records')
+            .insert([{
+                user_id: currentUserId,
+                score: finalScore,
+                total_questions: totalQuestions,
+                tested_at: testedAt
+            }]);
+
+        // 答對的題目：從「錯題紀錄」中移除（設定 is_wrong_history = false）
+        if (correctQuestionIds.length > 0) {
+            const correctUpserts = correctQuestionIds.map(qId => ({
+                user_id: currentUserId,
+                question_id: qId,
+                is_wrong_history: false,
+                updated_at: testedAt
+            }));
+
+            await supabaseClient
+                .from('marked_questions')
+                .upsert(correctUpserts, { onConflict: 'user_id,question_id' });
+        }
+
+        // 依然答錯的題目：更新錯題時間
+        if (wrongQuestionIds.length > 0) {
+            const wrongUpserts = wrongQuestionIds.map(qId => ({
+                user_id: currentUserId,
+                question_id: qId,
+                is_wrong_history: true,
+                updated_at: testedAt
+            }));
+
+            await supabaseClient
+                .from('marked_questions')
+                .upsert(wrongUpserts, { onConflict: 'user_id,question_id' });
+        }
+
+        // 顯示看板與更新說明
+        document.getElementById("scoreBoard").style.display = "block";
+        document.getElementById("finalScore").innerText = `${finalScore} 分`;
+        document.getElementById("scoreDetail").innerText = `本次答對 ${correctCount} 題，已為您將 ${correctCount} 筆題目從錯題本中消滅！`;
+        
+        if (wrongQuestionNumbers.length > 0) {
+            const wrongNumbersStr = wrongQuestionNumbers.join(', ');
+            document.getElementById("wrongQuestionsList").innerText = wrongNumbersStr;
+            document.getElementById("wrongQuestionsBanner").classList.add("show");
+        }
+        
+        document.getElementById("submitBtn").style.display = "none";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goToMarkedQuestions() {
+        window.location.href = "marked_questions_manager.html";
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+</script>
+
+</body>
+</html>
