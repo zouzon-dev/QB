@@ -430,20 +430,23 @@
         
         if (recordError) console.error("成績紀錄寫入失敗:", recordError.message);
 
-        // 將寫錯的題目紀錄至錯題標記表
+        // 將寫錯的題目紀錄至錯題標記表（修正欄位名稱為 updated_at 並增加錯誤處理）
         if (wrongQuestionIds.length > 0) {
             const upsertData = wrongQuestionIds.map(qId => ({
                 user_id: currentUserId,
                 question_id: qId,
                 is_wrong_history: true,
-                wrong_at: testedAt
+                updated_at: testedAt
             }));
 
             const { error: markError } = await supabaseClient
                 .from('marked_questions')
                 .upsert(upsertData, { onConflict: 'user_id,question_id' });
 
-            if (markError) console.error("錯題本更新失敗:", markError.message);
+            if (markError) {
+                console.error("錯題本更新失敗:", markError.message);
+                alert("寫入錯題本失敗，請檢查資料庫 RLS 權限與設定：" + markError.message);
+            }
         }
 
         // 顯示分數結算看板
@@ -476,3 +479,9 @@
 
 </body>
 </html>
+"""
+
+with open("test.html", "w", encoding="utf-8") as f:
+    f.write(html_code)
+
+print("Saved test.html successfully.")
