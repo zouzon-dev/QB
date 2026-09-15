@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>錯題標記管理</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -457,6 +458,12 @@
             border-left: 4px solid #f44336;
         }
 
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
         @keyframes slideIn {
             from {
                 transform: translateX(400px);
@@ -552,6 +559,11 @@
             <!-- 題目列表 -->
             <div class="questions-list" id="questionsList"></div>
 
+            <!-- 載入中 -->
+            <div class="loading" id="loadingState" style="display: none;">
+                ⏳ 正在載入資料...
+            </div>
+
             <!-- 空狀態 -->
             <div class="empty-state" id="emptyState" style="display: none;">
                 <div class="empty-state-icon">📚</div>
@@ -575,36 +587,31 @@
                 </div>
                 <div class="form-group">
                     <label for="editQuestion">題目敘述</label>
-                    <textarea id="editQuestion"></textarea>
+                    <textarea id="editQuestion" readonly></textarea>
                 </div>
                 <div class="form-group">
                     <label for="editOptA">選項 A</label>
-                    <input type="text" id="editOptA">
+                    <input type="text" id="editOptA" readonly>
                 </div>
                 <div class="form-group">
                     <label for="editOptB">選項 B</label>
-                    <input type="text" id="editOptB">
+                    <input type="text" id="editOptB" readonly>
                 </div>
                 <div class="form-group">
                     <label for="editOptC">選項 C</label>
-                    <input type="text" id="editOptC">
+                    <input type="text" id="editOptC" readonly>
                 </div>
                 <div class="form-group">
                     <label for="editOptD">選項 D</label>
-                    <input type="text" id="editOptD">
+                    <input type="text" id="editOptD" readonly>
                 </div>
                 <div class="form-group">
                     <label for="editCorrect">正確答案</label>
-                    <select id="editCorrect">
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="C">C</option>
-                        <option value="D">D</option>
-                    </select>
+                    <input type="text" id="editCorrect" readonly>
                 </div>
                 <div class="form-group">
                     <label for="editExplanation">詳解</label>
-                    <textarea id="editExplanation"></textarea>
+                    <textarea id="editExplanation" readonly></textarea>
                 </div>
                 <div class="form-group-checkbox">
                     <input type="checkbox" id="editIsWrong">
@@ -623,6 +630,13 @@
     </div>
 
     <script>
+        // ==================== Supabase 初始化 ====================
+        const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentUserId = null;
+
         // ==================== 資料管理 ====================
         class MarkedQuestionsManager {
             constructor() {
@@ -631,89 +645,84 @@
                 this.currentPage = 1;
                 this.itemsPerPage = 5;
                 this.editingQuestionId = null;
+                this.allQuestions = {}; // 快取所有題目
                 this.init();
             }
 
             async init() {
-                this.loadData();
-                this.setupEventListeners();
-                this.renderQuestions();
-                this.updateStats();
-            }
-
-            loadData() {
-                // 模擬資料 - 實際應從資料庫獲取
-                this.questions = [
-                    {
-                        id: 1,
-                        categoryId: 1,
-                        categoryName: '計算機概論 - 第一章',
-                        question: '下列何者是現代計算機的基本特點？',
-                        options: {
-                            A: '只能處理數值計算',
-                            B: '能處理各種資訊，具有邏輯判斷能力',
-                            C: '計算速度很慢',
-                            D: '必須由人工操作'
-                        },
-                        correct: 'B',
-                        explanation: '現代計算機具有多功能性，不只能進行數值計算，還能進行邏輯判斷、文字處理等各種資訊處理。',
-                        isWrongHistory: true,
-                        isBookmarked: false,
-                        timestamp: new Date('2026-07-08')
-                    },
-                    {
-                        id: 2,
-                        categoryId: 1,
-                        categoryName: '計算機概論 - 第一章',
-                        question: '計算機硬體的五大組成部分不包括下列哪一項？',
-                        options: {
-                            A: '控制器',
-                            B: '運算器',
-                            C: '編譯器',
-                            D: '存儲器'
-                        },
-                        correct: 'C',
-                        explanation: '計算機硬體的五大基本部分是：控制器、運算器、存儲器、輸入設備和輸出設備。編譯器是軟體，不是硬體。',
-                        isWrongHistory: true,
-                        isBookmarked: true,
-                        timestamp: new Date('2026-07-09')
-                    },
-                    {
-                        id: 3,
-                        categoryId: 2,
-                        categoryName: '會計學 - 第二章',
-                        question: '資產負債表中，資產 = 負債 + 什麼？',
-                        options: {
-                            A: '利潤',
-                            B: '收入',
-                            C: '所有者權益',
-                            D: '成本'
-                        },
-                        correct: 'C',
-                        explanation: '根據會計基本等式：資產 = 負債 + 所有者權益。這是會計的基礎原理。',
-                        isWrongHistory: false,
-                        isBookmarked: true,
-                        timestamp: new Date('2026-07-10')
+                try {
+                    // 驗證使用者
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (!user) {
+                        alert("請先登入系統！");
+                        window.location.href = "auth.html";
+                        return;
                     }
-                ];
+                    currentUserId = user.id;
 
-                // 從 localStorage 讀取本地修改
-                const saved = localStorage.getItem('markedQuestions');
-                if (saved) {
-                    try {
-                        const savedQuestions = JSON.parse(saved);
-                        this.questions = this.mergeData(this.questions, savedQuestions);
-                    } catch (e) {
-                        console.error('Failed to load saved data:', e);
-                    }
+                    document.getElementById('loadingState').style.display = 'block';
+                    await this.loadData();
+                    this.setupEventListeners();
+                    this.renderQuestions();
+                    this.updateStats();
+                    document.getElementById('loadingState').style.display = 'none';
+                } catch (error) {
+                    console.error('初始化失敗:', error);
+                    this.showToast('載入失敗，請重試', 'error');
                 }
             }
 
-            mergeData(original, saved) {
-                return original.map(q => {
-                    const savedQ = saved.find(s => s.id === q.id);
-                    return savedQ ? { ...q, ...savedQ } : q;
-                });
+            async loadData() {
+                try {
+                    // 1. 先載入所有題目到快取
+                    const { data: allQuestionsData, error: allQuestionsError } = await supabaseClient
+                        .from('questions')
+                        .select('*')
+                        .order('id', { ascending: true });
+
+                    if (allQuestionsError) throw allQuestionsError;
+
+                    allQuestionsData.forEach(q => {
+                        this.allQuestions[q.id] = q;
+                    });
+
+                    // 2. 載入該使用者的標記題目
+                    const { data: markedData, error: markedError } = await supabaseClient
+                        .from('marked_questions')
+                        .select('*')
+                        .eq('user_id', currentUserId)
+                        .order('created_at', { ascending: false });
+
+                    if (markedError) throw markedError;
+
+                    // 3. 組合資料：標記資訊 + 題目內容
+                    this.questions = (markedData || []).map(marked => {
+                        const questionData = this.allQuestions[marked.question_id] || {};
+                        return {
+                            id: marked.question_id,
+                            categoryId: questionData.category_id || 0,
+                            categoryName: questionData.category_name || '未分類',
+                            question: questionData.question_text || '題目文字',
+                            options: {
+                                A: questionData.option_a || '',
+                                B: questionData.option_b || '',
+                                C: questionData.option_c || '',
+                                D: questionData.option_d || ''
+                            },
+                            correct: questionData.correct_answer || '',
+                            explanation: questionData.explanation || '',
+                            isWrongHistory: marked.is_wrong_history || false,
+                            isBookmarked: marked.is_bookmarked || false,
+                            timestamp: new Date(marked.created_at),
+                            markedId: marked.id // 保存 marked_questions 表的 ID，用於更新
+                        };
+                    });
+
+                    this.applyFilters();
+                } catch (error) {
+                    console.error('載入資料失敗:', error);
+                    throw error;
+                }
             }
 
             setupEventListeners() {
@@ -725,13 +734,15 @@
                 document.getElementById('cancelEdit').addEventListener('click', () => this.closeEditModal());
                 document.getElementById('saveEdit').addEventListener('click', () => this.saveEdits());
 
-                // 加載分類選項
                 this.loadCategories();
             }
 
             loadCategories() {
-                const categories = [...new Set(this.questions.map(q => ({ id: q.categoryId, name: q.categoryName })))];
+                const categories = [...new Set(
+                    this.questions.map(q => ({ id: q.categoryId, name: q.categoryName }))
+                )];
                 const select = document.getElementById('filterCategory');
+                select.innerHTML = '<option value="">全部</option>';
                 categories.forEach(cat => {
                     const option = document.createElement('option');
                     option.value = cat.id;
@@ -751,7 +762,7 @@
                     if (filterType === 'bookmark') typeMatch = q.isBookmarked;
 
                     const categoryMatch = !filterCategory || q.categoryId == filterCategory;
-                    const searchMatch = !searchKeyword || 
+                    const searchMatch = !searchKeyword ||
                         q.question.toLowerCase().includes(searchKeyword) ||
                         Object.values(q.options).some(opt => opt.toLowerCase().includes(searchKeyword));
 
@@ -822,13 +833,13 @@
                             </div>
                         </div>
 
-                        <div class="question-text">${q.question}</div>
+                        <div class="question-text">${escapeHtml(q.question)}</div>
 
                         <div class="question-options">
                             ${Object.entries(q.options).map(([key, text]) => `
                                 <div class="option ${key === correctOptionKey ? 'correct' : ''}">
                                     <span class="option-label">${key}</span>
-                                    <span class="option-text">${text}</span>
+                                    <span class="option-text">${escapeHtml(text)}</span>
                                     ${key === correctOptionKey ? '<span style="margin-left: auto; color: #4caf50;">✓ 正確</span>' : ''}
                                 </div>
                             `).join('')}
@@ -837,13 +848,13 @@
                         ${q.explanation ? `
                             <div class="explanation">
                                 <div class="explanation-label">📖 詳解</div>
-                                <div>${q.explanation}</div>
+                                <div>${escapeHtml(q.explanation)}</div>
                             </div>
                         ` : ''}
 
                         <div class="question-actions">
                             <button class="action-btn btn-primary" onclick="manager.openEditModal(${q.id})">
-                                ✏️ 編輯
+                                ✏️ 檢視
                             </button>
                             <button class="action-btn btn-warning" onclick="manager.toggleMark(${q.id}, 'wrong')">
                                 ${q.isWrongHistory ? '❌' : '⭕'} 錯題
@@ -852,7 +863,7 @@
                                 ${q.isBookmarked ? '⭐' : '☆'} 收藏
                             </button>
                             <button class="action-btn btn-danger" onclick="manager.deleteQuestion(${q.id})">
-                                🗑️ 刪除
+                                🗑️ 移除
                             </button>
                         </div>
                     </div>
@@ -878,18 +889,34 @@
                 }
             }
 
-            toggleMark(id, type) {
+            async toggleMark(id, type) {
                 const question = this.questions.find(q => q.id === id);
-                if (question) {
+                if (!question) return;
+
+                try {
                     if (type === 'wrong') {
                         question.isWrongHistory = !question.isWrongHistory;
                     } else if (type === 'bookmark') {
                         question.isBookmarked = !question.isBookmarked;
                     }
-                    this.saveToLocalStorage();
+
+                    // 更新到資料庫
+                    const { error } = await supabaseClient
+                        .from('marked_questions')
+                        .update({
+                            is_wrong_history: question.isWrongHistory,
+                            is_bookmarked: question.isBookmarked
+                        })
+                        .eq('id', question.markedId);
+
+                    if (error) throw error;
+
                     this.applyFilters();
                     this.updateStats();
                     this.showToast('標記已更新', 'success');
+                } catch (error) {
+                    console.error('更新標記失敗:', error);
+                    this.showToast('更新失敗，請重試', 'error');
                 }
             }
 
@@ -917,34 +944,55 @@
                 this.editingQuestionId = null;
             }
 
-            saveEdits() {
+            async saveEdits() {
                 const question = this.questions.find(q => q.id === this.editingQuestionId);
                 if (!question) return;
 
-                question.question = document.getElementById('editQuestion').value;
-                question.options.A = document.getElementById('editOptA').value;
-                question.options.B = document.getElementById('editOptB').value;
-                question.options.C = document.getElementById('editOptC').value;
-                question.options.D = document.getElementById('editOptD').value;
-                question.correct = document.getElementById('editCorrect').value;
-                question.explanation = document.getElementById('editExplanation').value;
-                question.isWrongHistory = document.getElementById('editIsWrong').checked;
-                question.isBookmarked = document.getElementById('editIsBookmark').checked;
+                try {
+                    const { error } = await supabaseClient
+                        .from('marked_questions')
+                        .update({
+                            is_wrong_history: document.getElementById('editIsWrong').checked,
+                            is_bookmarked: document.getElementById('editIsBookmark').checked
+                        })
+                        .eq('id', question.markedId);
 
-                this.saveToLocalStorage();
-                this.closeEditModal();
-                this.applyFilters();
-                this.updateStats();
-                this.showToast('題目已保存', 'success');
-            }
+                    if (error) throw error;
 
-            deleteQuestion(id) {
-                if (confirm('確定要刪除這題嗎？此操作無法撤銷。')) {
-                    this.questions = this.questions.filter(q => q.id !== id);
-                    this.saveToLocalStorage();
+                    question.isWrongHistory = document.getElementById('editIsWrong').checked;
+                    question.isBookmarked = document.getElementById('editIsBookmark').checked;
+
+                    this.closeEditModal();
                     this.applyFilters();
                     this.updateStats();
-                    this.showToast('題目已刪除', 'success');
+                    this.showToast('題目已保存', 'success');
+                } catch (error) {
+                    console.error('保存失敗:', error);
+                    this.showToast('保存失敗，請重試', 'error');
+                }
+            }
+
+            async deleteQuestion(id) {
+                if (!confirm('確定要移除這題嗎？')) return;
+
+                try {
+                    const question = this.questions.find(q => q.id === id);
+                    if (!question) return;
+
+                    const { error } = await supabaseClient
+                        .from('marked_questions')
+                        .delete()
+                        .eq('id', question.markedId);
+
+                    if (error) throw error;
+
+                    this.questions = this.questions.filter(q => q.id !== id);
+                    this.applyFilters();
+                    this.updateStats();
+                    this.showToast('題目已移除', 'success');
+                } catch (error) {
+                    console.error('刪除失敗:', error);
+                    this.showToast('刪除失敗，請重試', 'error');
                 }
             }
 
@@ -969,10 +1017,6 @@
                 this.showToast('資料已匯出', 'success');
             }
 
-            saveToLocalStorage() {
-                localStorage.setItem('markedQuestions', JSON.stringify(this.questions));
-            }
-
             showToast(message, type = 'success') {
                 const toast = document.createElement('div');
                 toast.className = `toast ${type}`;
@@ -984,6 +1028,14 @@
                     setTimeout(() => toast.remove(), 300);
                 }, 2000);
             }
+        }
+
+        // 防止 XSS 攻擊
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
 
         // ==================== 初始化 ====================
