@@ -631,192 +631,197 @@
 
     <script>
         // ==================== Supabase 初始化 ====================
-        const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const SUPABASE_URL = "https://cebkdvpquzzlvyrhinto.supabase.co";[cite: 1]
+        const SUPABASE_KEY = "sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ";[cite: 1]
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);[cite: 1]
 
-        let currentUserId = null;
+        let currentUserId = null;[cite: 1]
 
         // ==================== 資料管理 ====================
         class MarkedQuestionsManager {
             constructor() {
-                this.questions = [];
-                this.filteredQuestions = [];
-                this.currentPage = 1;
-                this.itemsPerPage = 5;
-                this.editingQuestionId = null;
-                this.allQuestions = {}; // 快取所有題目
-                this.init();
+                this.questions = [];[cite: 1]
+                this.filteredQuestions = [];[cite: 1]
+                this.currentPage = 1;[cite: 1]
+                this.itemsPerPage = 5;[cite: 1]
+                this.editingQuestionId = null;[cite: 1]
+                this.allQuestions = {}; // 快取所有題目[cite: 1]
+                this.init();[cite: 1]
             }
 
             async init() {
+                const loadingEl = document.getElementById('loadingState');[cite: 1]
                 try {
-                    // 驗證使用者
-                    const { data: { user } } = await supabaseClient.auth.getUser();
-                    if (!user) {
-                        alert("請先登入系統！");
-                        window.location.href = "auth.html";
-                        return;
-                    }
-                    currentUserId = user.id;
+                    loadingEl.style.display = 'block';[cite: 1]
 
-                    document.getElementById('loadingState').style.display = 'block';
-                    await this.loadData();
-                    this.setupEventListeners();
-                    this.renderQuestions();
-                    this.updateStats();
-                    document.getElementById('loadingState').style.display = 'none';
+                    // 1. 驗證使用者登入狀態
+                    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();[cite: 1]
+                    if (authError || !user) {
+                        console.warn("使用者未登入或 Session 已過期", authError);[cite: 1]
+                        alert("請先登入系統！");[cite: 1]
+                        window.location.href = "auth.html";[cite: 1]
+                        return;[cite: 1]
+                    }
+                    currentUserId = user.id;[cite: 1]
+
+                    // 2. 載入資料
+                    await this.loadData();[cite: 1]
+                    this.setupEventListeners();[cite: 1]
+                    this.renderQuestions();[cite: 1]
+                    this.updateStats();[cite: 1]
                 } catch (error) {
-                    console.error('初始化失敗:', error);
-                    this.showToast('載入失敗，請重試', 'error');
+                    console.error('初始化失敗:', error);[cite: 1]
+                    this.showToast('載入失敗，請重試', 'error');[cite: 1]
+                } finally {
+                    // 無論成功或失敗均關閉 Loading[cite: 1]
+                    loadingEl.style.display = 'none';[cite: 1]
                 }
             }
 
             async loadData() {
                 try {
-                    // 1. 先載入所有題目到快取
+                    // 1. 載入所有題目到快取
                     const { data: allQuestionsData, error: allQuestionsError } = await supabaseClient
-                        .from('questions')
-                        .select('*')
-                        .order('id', { ascending: true });
+                        .from('questions')[cite: 1]
+                        .select('*')[cite: 1]
+                        .order('id', { ascending: true });[cite: 1]
 
-                    if (allQuestionsError) throw allQuestionsError;
+                    if (allQuestionsError) throw allQuestionsError;[cite: 1]
 
-                    allQuestionsData.forEach(q => {
-                        this.allQuestions[q.id] = q;
+                    (allQuestionsData || []).forEach(q => {
+                        this.allQuestions[q.id] = q;[cite: 1]
                     });
 
-                    // 2. 載入該使用者的標記題目
+                    // 2. 載入該使用者的標記題目 (方案A：依 updated_at 排序)
                     const { data: markedData, error: markedError } = await supabaseClient
-                        .from('marked_questions')
-                        .select('*')
-                        .eq('user_id', currentUserId)
-                        .order('created_at', { ascending: false });
+                        .from('marked_questions')[cite: 1]
+                        .select('*')[cite: 1]
+                        .eq('user_id', currentUserId)[cite: 1]
+                        .order('updated_at', { ascending: false });
 
-                    if (markedError) throw markedError;
+                    if (markedError) throw markedError;[cite: 1]
 
                     // 3. 組合資料：標記資訊 + 題目內容
                     this.questions = (markedData || []).map(marked => {
-                        const questionData = this.allQuestions[marked.question_id] || {};
+                        const questionData = this.allQuestions[marked.question_id] || {};[cite: 1]
                         return {
-                            id: marked.question_id,
-                            categoryId: questionData.category_id || 0,
-                            categoryName: questionData.category_name || '未分類',
-                            question: questionData.question_text || '題目文字',
+                            id: marked.question_id,[cite: 1]
+                            categoryId: questionData.category_id || 0,[cite: 1]
+                            categoryName: questionData.category_name || '未分類',[cite: 1]
+                            question: questionData.question_text || '題目文字已不存在',[cite: 1]
                             options: {
-                                A: questionData.option_a || '',
-                                B: questionData.option_b || '',
-                                C: questionData.option_c || '',
-                                D: questionData.option_d || ''
+                                A: questionData.option_a || '',[cite: 1]
+                                B: questionData.option_b || '',[cite: 1]
+                                C: questionData.option_c || '',[cite: 1]
+                                D: questionData.option_d || ''[cite: 1]
                             },
-                            correct: questionData.correct_answer || '',
-                            explanation: questionData.explanation || '',
-                            isWrongHistory: marked.is_wrong_history || false,
-                            isBookmarked: marked.is_bookmarked || false,
-                            timestamp: new Date(marked.created_at),
-                            markedId: marked.id // 保存 marked_questions 表的 ID，用於更新
+                            correct: questionData.correct_answer || '',[cite: 1]
+                            explanation: questionData.explanation || '',[cite: 1]
+                            isWrongHistory: marked.is_wrong_history || false,[cite: 1]
+                            isBookmarked: marked.is_bookmarked || false,[cite: 1]
+                            timestamp: marked.updated_at ? new Date(marked.updated_at) : new Date(),
+                            markedId: marked.id[cite: 1]
                         };
                     });
 
-                    this.applyFilters();
+                    this.applyFilters();[cite: 1]
                 } catch (error) {
-                    console.error('載入資料失敗:', error);
-                    throw error;
+                    console.error('載入資料失敗:', error);[cite: 1]
+                    throw error;[cite: 1]
                 }
             }
 
             setupEventListeners() {
-                document.getElementById('filterType').addEventListener('change', () => this.applyFilters());
-                document.getElementById('filterCategory').addEventListener('change', () => this.applyFilters());
-                document.getElementById('searchKeyword').addEventListener('input', () => this.applyFilters());
-                document.getElementById('resetFilters').addEventListener('click', () => this.resetFilters());
-                document.getElementById('exportData').addEventListener('click', () => this.exportData());
-                document.getElementById('cancelEdit').addEventListener('click', () => this.closeEditModal());
-                document.getElementById('saveEdit').addEventListener('click', () => this.saveEdits());
+                document.getElementById('filterType').addEventListener('change', () => this.applyFilters());[cite: 1]
+                document.getElementById('filterCategory').addEventListener('change', () => this.applyFilters());[cite: 1]
+                document.getElementById('searchKeyword').addEventListener('input', () => this.applyFilters());[cite: 1]
+                document.getElementById('resetFilters').addEventListener('click', () => this.resetFilters());[cite: 1]
+                document.getElementById('exportData').addEventListener('click', () => this.exportData());[cite: 1]
+                document.getElementById('cancelEdit').addEventListener('click', () => this.closeEditModal());[cite: 1]
+                document.getElementById('saveEdit').addEventListener('click', () => this.saveEdits());[cite: 1]
 
-                this.loadCategories();
+                this.loadCategories();[cite: 1]
             }
 
             loadCategories() {
                 const categories = [...new Set(
-                    this.questions.map(q => ({ id: q.categoryId, name: q.categoryName }))
+                    this.questions.map(q => ({ id: q.categoryId, name: q.categoryName }))[cite: 1]
                 )];
-                const select = document.getElementById('filterCategory');
-                select.innerHTML = '<option value="">全部</option>';
+                const select = document.getElementById('filterCategory');[cite: 1]
+                select.innerHTML = '<option value="">全部</option>';[cite: 1]
                 categories.forEach(cat => {
-                    const option = document.createElement('option');
-                    option.value = cat.id;
-                    option.textContent = cat.name;
-                    select.appendChild(option);
+                    const option = document.createElement('option');[cite: 1]
+                    option.value = cat.id;[cite: 1]
+                    option.textContent = cat.name;[cite: 1]
+                    select.appendChild(option);[cite: 1]
                 });
             }
 
             applyFilters() {
-                const filterType = document.getElementById('filterType').value;
-                const filterCategory = document.getElementById('filterCategory').value;
-                const searchKeyword = document.getElementById('searchKeyword').value.toLowerCase();
+                const filterType = document.getElementById('filterType').value;[cite: 1]
+                const filterCategory = document.getElementById('filterCategory').value;[cite: 1]
+                const searchKeyword = document.getElementById('searchKeyword').value.toLowerCase();[cite: 1]
 
                 this.filteredQuestions = this.questions.filter(q => {
-                    let typeMatch = true;
-                    if (filterType === 'wrong') typeMatch = q.isWrongHistory;
-                    if (filterType === 'bookmark') typeMatch = q.isBookmarked;
+                    let typeMatch = true;[cite: 1]
+                    if (filterType === 'wrong') typeMatch = q.isWrongHistory;[cite: 1]
+                    if (filterType === 'bookmark') typeMatch = q.isBookmarked;[cite: 1]
 
-                    const categoryMatch = !filterCategory || q.categoryId == filterCategory;
+                    const categoryMatch = !filterCategory || q.categoryId == filterCategory;[cite: 1]
                     const searchMatch = !searchKeyword ||
                         q.question.toLowerCase().includes(searchKeyword) ||
-                        Object.values(q.options).some(opt => opt.toLowerCase().includes(searchKeyword));
+                        Object.values(q.options).some(opt => opt.toLowerCase().includes(searchKeyword));[cite: 1]
 
-                    return typeMatch && categoryMatch && searchMatch;
+                    return typeMatch && categoryMatch && searchMatch;[cite: 1]
                 });
 
-                this.currentPage = 1;
-                this.renderQuestions();
+                this.currentPage = 1;[cite: 1]
+                this.renderQuestions();[cite: 1]
             }
 
             resetFilters() {
-                document.getElementById('filterType').value = 'all';
-                document.getElementById('filterCategory').value = '';
-                document.getElementById('searchKeyword').value = '';
-                this.applyFilters();
-                this.showToast('篩選已重置', 'success');
+                document.getElementById('filterType').value = 'all';[cite: 1]
+                document.getElementById('filterCategory').value = '';[cite: 1]
+                document.getElementById('searchKeyword').value = '';[cite: 1]
+                this.applyFilters();[cite: 1]
+                this.showToast('篩選已重置', 'success');[cite: 1]
             }
 
             updateStats() {
-                const totalWrong = this.questions.filter(q => q.isWrongHistory).length;
-                const totalBookmark = this.questions.filter(q => q.isBookmarked).length;
-                const totalMarked = this.questions.filter(q => q.isWrongHistory || q.isBookmarked).length;
-                const reviewProgress = totalMarked > 0 ? Math.round((totalMarked / this.questions.length) * 100) : 0;
+                const totalWrong = this.questions.filter(q => q.isWrongHistory).length;[cite: 1]
+                const totalBookmark = this.questions.filter(q => q.isBookmarked).length;[cite: 1]
+                const totalMarked = this.questions.filter(q => q.isWrongHistory || q.isBookmarked).length;[cite: 1]
+                const reviewProgress = totalMarked > 0 ? Math.round((totalMarked / this.questions.length) * 100) : 0;[cite: 1]
 
-                document.getElementById('totalWrong').textContent = totalWrong;
-                document.getElementById('totalBookmark').textContent = totalBookmark;
-                document.getElementById('totalMarked').textContent = totalMarked;
-                document.getElementById('reviewProgress').textContent = reviewProgress + '%';
+                document.getElementById('totalWrong').textContent = totalWrong;[cite: 1]
+                document.getElementById('totalBookmark').textContent = totalBookmark;[cite: 1]
+                document.getElementById('totalMarked').textContent = totalMarked;[cite: 1]
+                document.getElementById('reviewProgress').textContent = reviewProgress + '%';[cite: 1]
             }
 
             renderQuestions() {
-                const container = document.getElementById('questionsList');
-                const emptyState = document.getElementById('emptyState');
+                const container = document.getElementById('questionsList');[cite: 1]
+                const emptyState = document.getElementById('emptyState');[cite: 1]
 
                 if (this.filteredQuestions.length === 0) {
-                    container.innerHTML = '';
-                    emptyState.style.display = 'block';
-                    document.getElementById('pagination').innerHTML = '';
-                    return;
+                    container.innerHTML = '';[cite: 1]
+                    emptyState.style.display = 'block';[cite: 1]
+                    document.getElementById('pagination').innerHTML = '';[cite: 1]
+                    return;[cite: 1]
                 }
 
-                emptyState.style.display = 'none';
+                emptyState.style.display = 'none';[cite: 1]
 
-                const start = (this.currentPage - 1) * this.itemsPerPage;
-                const end = start + this.itemsPerPage;
-                const pageQuestions = this.filteredQuestions.slice(start, end);
+                const start = (this.currentPage - 1) * this.itemsPerPage;[cite: 1]
+                const end = start + this.itemsPerPage;[cite: 1]
+                const pageQuestions = this.filteredQuestions.slice(start, end);[cite: 1]
 
-                container.innerHTML = pageQuestions.map(q => this.createQuestionCard(q)).join('');
-                this.renderPagination();
+                container.innerHTML = pageQuestions.map(q => this.createQuestionCard(q)).join('');[cite: 1]
+                this.renderPagination();[cite: 1]
             }
 
             createQuestionCard(q) {
-                const correctOptionKey = q.correct;
-                const correctOptionText = q.options[correctOptionKey];
+                const correctOptionKey = q.correct;[cite: 1]
 
                 return `
                     <div class="question-card" data-id="${q.id}">
@@ -867,181 +872,183 @@
                             </button>
                         </div>
                     </div>
-                `;
+                `;[cite: 1]
             }
 
             renderPagination() {
-                const totalPages = Math.ceil(this.filteredQuestions.length / this.itemsPerPage);
-                const pagination = document.getElementById('pagination');
-                pagination.innerHTML = '';
+                const totalPages = Math.ceil(this.filteredQuestions.length / this.itemsPerPage);[cite: 1]
+                const pagination = document.getElementById('pagination');[cite: 1]
+                pagination.innerHTML = '';[cite: 1]
 
-                if (totalPages <= 1) return;
+                if (totalPages <= 1) return;[cite: 1]
 
                 for (let i = 1; i <= totalPages; i++) {
-                    const btn = document.createElement('button');
-                    btn.textContent = i;
-                    btn.className = i === this.currentPage ? 'btn-secondary active' : 'btn-secondary';
+                    const btn = document.createElement('button');[cite: 1]
+                    btn.textContent = i;[cite: 1]
+                    btn.className = i === this.currentPage ? 'btn-secondary active' : 'btn-secondary';[cite: 1]
                     btn.onclick = () => {
-                        this.currentPage = i;
-                        this.renderQuestions();
+                        this.currentPage = i;[cite: 1]
+                        this.renderQuestions();[cite: 1]
                     };
-                    pagination.appendChild(btn);
+                    pagination.appendChild(btn);[cite: 1]
                 }
             }
 
             async toggleMark(id, type) {
-                const question = this.questions.find(q => q.id === id);
-                if (!question) return;
+                const question = this.questions.find(q => q.id === id);[cite: 1]
+                if (!question) return;[cite: 1]
 
                 try {
                     if (type === 'wrong') {
-                        question.isWrongHistory = !question.isWrongHistory;
+                        question.isWrongHistory = !question.isWrongHistory;[cite: 1]
                     } else if (type === 'bookmark') {
-                        question.isBookmarked = !question.isBookmarked;
+                        question.isBookmarked = !question.isBookmarked;[cite: 1]
                     }
 
-                    // 更新到資料庫
+                    // 更新 marked_questions，更新時會寫入 updated_at
                     const { error } = await supabaseClient
-                        .from('marked_questions')
+                        .from('marked_questions')[cite: 1]
                         .update({
-                            is_wrong_history: question.isWrongHistory,
-                            is_bookmarked: question.isBookmarked
+                            is_wrong_history: question.isWrongHistory,[cite: 1]
+                            is_bookmarked: question.isBookmarked,
+                            updated_at: new Date().toISOString()
                         })
-                        .eq('id', question.markedId);
+                        .eq('id', question.markedId);[cite: 1]
 
-                    if (error) throw error;
+                    if (error) throw error;[cite: 1]
 
-                    this.applyFilters();
-                    this.updateStats();
-                    this.showToast('標記已更新', 'success');
+                    this.applyFilters();[cite: 1]
+                    this.updateStats();[cite: 1]
+                    this.showToast('標記已更新', 'success');[cite: 1]
                 } catch (error) {
-                    console.error('更新標記失敗:', error);
-                    this.showToast('更新失敗，請重試', 'error');
+                    console.error('更新標記失敗:', error);[cite: 1]
+                    this.showToast('更新失敗，請重試', 'error');[cite: 1]
                 }
             }
 
             openEditModal(id) {
-                const question = this.questions.find(q => q.id === id);
-                if (!question) return;
+                const question = this.questions.find(q => q.id === id);[cite: 1]
+                if (!question) return;[cite: 1]
 
-                this.editingQuestionId = id;
-                document.getElementById('editQID').value = question.id;
-                document.getElementById('editQuestion').value = question.question;
-                document.getElementById('editOptA').value = question.options.A;
-                document.getElementById('editOptB').value = question.options.B;
-                document.getElementById('editOptC').value = question.options.C;
-                document.getElementById('editOptD').value = question.options.D;
-                document.getElementById('editCorrect').value = question.correct;
-                document.getElementById('editExplanation').value = question.explanation;
-                document.getElementById('editIsWrong').checked = question.isWrongHistory;
-                document.getElementById('editIsBookmark').checked = question.isBookmarked;
+                this.editingQuestionId = id;[cite: 1]
+                document.getElementById('editQID').value = question.id;[cite: 1]
+                document.getElementById('editQuestion').value = question.question;[cite: 1]
+                document.getElementById('editOptA').value = question.options.A;[cite: 1]
+                document.getElementById('editOptB').value = question.options.B;[cite: 1]
+                document.getElementById('editOptC').value = question.options.C;[cite: 1]
+                document.getElementById('editOptD').value = question.options.D;[cite: 1]
+                document.getElementById('editCorrect').value = question.correct;[cite: 1]
+                document.getElementById('editExplanation').value = question.explanation;[cite: 1]
+                document.getElementById('editIsWrong').checked = question.isWrongHistory;[cite: 1]
+                document.getElementById('editIsBookmark').checked = question.isBookmarked;[cite: 1]
 
-                document.getElementById('editModal').classList.add('active');
+                document.getElementById('editModal').classList.add('active');[cite: 1]
             }
 
             closeEditModal() {
-                document.getElementById('editModal').classList.remove('active');
-                this.editingQuestionId = null;
+                document.getElementById('editModal').classList.remove('active');[cite: 1]
+                this.editingQuestionId = null;[cite: 1]
             }
 
             async saveEdits() {
-                const question = this.questions.find(q => q.id === this.editingQuestionId);
-                if (!question) return;
+                const question = this.questions.find(q => q.id === this.editingQuestionId);[cite: 1]
+                if (!question) return;[cite: 1]
 
                 try {
                     const { error } = await supabaseClient
-                        .from('marked_questions')
+                        .from('marked_questions')[cite: 1]
                         .update({
-                            is_wrong_history: document.getElementById('editIsWrong').checked,
-                            is_bookmarked: document.getElementById('editIsBookmark').checked
+                            is_wrong_history: document.getElementById('editIsWrong').checked,[cite: 1]
+                            is_bookmarked: document.getElementById('editIsBookmark').checked,
+                            updated_at: new Date().toISOString()
                         })
-                        .eq('id', question.markedId);
+                        .eq('id', question.markedId);[cite: 1]
 
-                    if (error) throw error;
+                    if (error) throw error;[cite: 1]
 
-                    question.isWrongHistory = document.getElementById('editIsWrong').checked;
-                    question.isBookmarked = document.getElementById('editIsBookmark').checked;
+                    question.isWrongHistory = document.getElementById('editIsWrong').checked;[cite: 1]
+                    question.isBookmarked = document.getElementById('editIsBookmark').checked;[cite: 1]
 
-                    this.closeEditModal();
-                    this.applyFilters();
-                    this.updateStats();
-                    this.showToast('題目已保存', 'success');
+                    this.closeEditModal();[cite: 1]
+                    this.applyFilters();[cite: 1]
+                    this.updateStats();[cite: 1]
+                    this.showToast('題目已保存', 'success');[cite: 1]
                 } catch (error) {
-                    console.error('保存失敗:', error);
-                    this.showToast('保存失敗，請重試', 'error');
+                    console.error('保存失敗:', error);[cite: 1]
+                    this.showToast('保存失敗，請重試', 'error');[cite: 1]
                 }
             }
 
             async deleteQuestion(id) {
-                if (!confirm('確定要移除這題嗎？')) return;
+                if (!confirm('確定要移除這題嗎？')) return;[cite: 1]
 
                 try {
-                    const question = this.questions.find(q => q.id === id);
-                    if (!question) return;
+                    const question = this.questions.find(q => q.id === id);[cite: 1]
+                    if (!question) return;[cite: 1]
 
                     const { error } = await supabaseClient
-                        .from('marked_questions')
-                        .delete()
-                        .eq('id', question.markedId);
+                        .from('marked_questions')[cite: 1]
+                        .delete()[cite: 1]
+                        .eq('id', question.markedId);[cite: 1]
 
-                    if (error) throw error;
+                    if (error) throw error;[cite: 1]
 
-                    this.questions = this.questions.filter(q => q.id !== id);
-                    this.applyFilters();
-                    this.updateStats();
-                    this.showToast('題目已移除', 'success');
+                    this.questions = this.questions.filter(q => q.id !== id);[cite: 1]
+                    this.applyFilters();[cite: 1]
+                    this.updateStats();[cite: 1]
+                    this.showToast('題目已移除', 'success');[cite: 1]
                 } catch (error) {
-                    console.error('刪除失敗:', error);
-                    this.showToast('刪除失敗，請重試', 'error');
+                    console.error('刪除失敗:', error);[cite: 1]
+                    this.showToast('刪除失敗，請重試', 'error');[cite: 1]
                 }
             }
 
             exportData() {
                 const data = {
-                    exportDate: new Date().toLocaleString('zh-TW'),
-                    totalQuestions: this.questions.length,
-                    wrongQuestions: this.questions.filter(q => q.isWrongHistory).length,
-                    bookmarkedQuestions: this.questions.filter(q => q.isBookmarked).length,
-                    questions: this.questions
+                    exportDate: new Date().toLocaleString('zh-TW'),[cite: 1]
+                    totalQuestions: this.questions.length,[cite: 1]
+                    wrongQuestions: this.questions.filter(q => q.isWrongHistory).length,[cite: 1]
+                    bookmarkedQuestions: this.questions.filter(q => q.isBookmarked).length,[cite: 1]
+                    questions: this.questions[cite: 1]
                 };
 
-                const json = JSON.stringify(data, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `marked_questions_${new Date().getTime()}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
+                const json = JSON.stringify(data, null, 2);[cite: 1]
+                const blob = new Blob([json], { type: 'application/json' });[cite: 1]
+                const url = URL.createObjectURL(blob);[cite: 1]
+                const a = document.createElement('a');[cite: 1]
+                a.href = url;[cite: 1]
+                a.download = `marked_questions_${new Date().getTime()}.json`;[cite: 1]
+                a.click();[cite: 1]
+                URL.revokeObjectURL(url);[cite: 1]
 
-                this.showToast('資料已匯出', 'success');
+                this.showToast('資料已匯出', 'success');[cite: 1]
             }
 
             showToast(message, type = 'success') {
-                const toast = document.createElement('div');
-                toast.className = `toast ${type}`;
-                toast.textContent = message;
-                document.body.appendChild(toast);
+                const toast = document.createElement('div');[cite: 1]
+                toast.className = `toast ${type}`;[cite: 1]
+                toast.textContent = message;[cite: 1]
+                document.body.appendChild(toast);[cite: 1]
 
                 setTimeout(() => {
-                    toast.style.animation = 'slideIn 0.3s ease reverse';
-                    setTimeout(() => toast.remove(), 300);
+                    toast.style.animation = 'slideIn 0.3s ease reverse';[cite: 1]
+                    setTimeout(() => toast.remove(), 300);[cite: 1]
                 }, 2000);
             }
         }
 
         // 防止 XSS 攻擊
         function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
+            if (!str) return '';[cite: 1]
+            const div = document.createElement('div');[cite: 1]
+            div.textContent = str;[cite: 1]
+            return div.innerHTML;[cite: 1]
         }
 
         // ==================== 初始化 ====================
-        let manager;
+        let manager;[cite: 1]
         document.addEventListener('DOMContentLoaded', () => {
-            manager = new MarkedQuestionsManager();
+            manager = new MarkedQuestionsManager();[cite: 1]
         });
     </script>
 </body>
