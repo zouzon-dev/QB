@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>試題管理系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary:#6366f1; --primary-hover:#4f46e5; --bg:#f8fafc; --card:#fff; --text:#1e293b; --muted:#64748b; --border:#e2e8f0; --edit:#f59e0b; --danger:#dc2626; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:'Noto Sans TC',sans-serif; background:var(--bg); color:var(--text); line-height:1.6; padding:32px 20px; }
+        .container { max-width:1100px; margin:auto; }
+        header { text-align:center; margin-bottom:28px; }
+        header h1 { color:#0f172a; font-size:28px; margin-bottom:6px; }
+        header p { color:var(--muted); font-size:14px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:22px; box-shadow:0 4px 6px -1px rgba(0,0,0,.05); }
+        .card-title { border-left:4px solid var(--primary); color:#0f172a; font-size:18px; font-weight:700; margin-bottom:20px; padding-left:10px; }
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .form-group { margin-bottom:16px; }
+        label { display:block; font-size:14px; font-weight:500; margin-bottom:7px; }
+        input, select, textarea { width:100%; border:1px solid var(--border); border-radius:6px; background:#fff; font:inherit; font-size:14px; padding:10px 12px; }
+        textarea { min-height:88px; resize:vertical; }
+        input:focus, select:focus, textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
+        .options { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .form-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+        .btn { border:0; border-radius:6px; cursor:pointer; font:inherit; font-size:14px; padding:10px 18px; transition:.2s; }
+        .btn:disabled { cursor:not-allowed; opacity:.6; }
+        .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-hover); }
+        .btn-edit { background:var(--edit); color:white; } .btn-edit:hover { background:#d97706; }
+        .btn-secondary { background:#e2e8f0; color:#475569; }
+        .btn-danger { background:#fee2e2; color:#b91c1c; } .btn-danger:hover { background:#fecaca; }
+        .toolbar { display:flex; gap:12px; margin-bottom:16px; }
+        .toolbar input { flex:1; margin:0; }
+        .table-container { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:14px; }
+        th, td { border-bottom:1px solid var(--border); padding:12px 10px; text-align:left; vertical-align:top; }
+        th { background:#f8fafc; color:#1e293b; white-space:nowrap; }
+        tr:hover { background:#f8fafc; }
+        .question-preview { max-width:330px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .badge { background:#e0e7ff; border-radius:12px; color:#4338ca; display:inline-block; font-size:12px; padding:2px 8px; white-space:nowrap; }
+        .actions { display:flex; gap:6px; white-space:nowrap; }
+        .action-btn { border:0; border-radius:4px; cursor:pointer; font-size:12px; padding:5px 9px; }
+        .status { border-radius:6px; display:none; font-size:14px; margin-top:14px; padding:11px 13px; }
+        .status.success { background:#dcfce7; border:1px solid #bbf7d0; color:#15803d; display:block; }
+        .status.error { background:#fee2e2; border:1px solid #fecaca; color:#b91c1c; display:block; }
+        .empty { color:var(--muted); text-align:center; }
+        @media (max-width:700px) { body { padding:20px 12px; } .grid-2,.options { grid-template-columns:1fr; } .form-actions { justify-content:stretch; } .form-actions .btn { flex:1; } .toolbar { flex-direction:column; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📝 試題管理系統</h1>
+        <p>新增、修改及刪除選擇題，資料會同步至 Supabase</p>
+    </header>
+
+    <div class="card">
+        <div class="card-title" id="formTitle">✨ 新增試題</div>
+        <form id="questionForm" onsubmit="handleSubmit(event)">
+            <input type="hidden" id="questionId">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="categoryId">學科與單元</label>
+                    <select id="categoryId" required><option value="">正在載入分類...</option></select>
+                </div>
+                <div class="form-group">
+                    <label for="correctAnswer">正確答案</label>
+                    <select id="correctAnswer" required>
+                        <option value="">請選擇正確答案</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="questionText">題目內容</label>
+                <textarea id="questionText" placeholder="請輸入題目內容" required></textarea>
+            </div>
+            <div class="options">
+                <div class="form-group"><label for="optionA">選項 A</label><input id="optionA" type="text" required></div>
+                <div class="form-group"><label for="optionB">選項 B</label><input id="optionB" type="text" required></div>
+                <div class="form-group"><label for="optionC">選項 C</label><input id="optionC" type="text" required></div>
+                <div class="form-group"><label for="optionD">選項 D</label><input id="optionD" type="text" required></div>
+            </div>
+            <div class="form-group">
+                <label for="explanation">答案解析（選填）</label>
+                <textarea id="explanation" placeholder="可輸入答案說明或解題提示"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="cancelBtn" class="btn btn-secondary" style="display:none" onclick="resetForm()">取消編輯</button>
+                <button type="submit" id="submitBtn" class="btn btn-primary">確認新增</button>
+            </div>
+        </form>
+        <div id="formStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📚 已建立的試題</div>
+        <div class="toolbar"><input id="searchInput" type="text" placeholder="搜尋題目內容或單元..." oninput="renderQuestions()"></div>
+        <div class="table-container">
+            <table>
+                <thead><tr><th style="width:70px">ID</th><th style="width:180px">分類</th><th>題目</th><th style="width:90px">答案</th><th style="width:150px">操作</th></tr></thead>
+                <tbody id="questionTableBody"><tr><td colspan="5" class="empty">正在載入資料中...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://cebkdvpquzzlvyrhinto.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_nMJezib-NsDHpvDSLLXHaw_9005bSpQ';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    let questions = [], categories = [], isEditing = false;
+
+    document.addEventListener('DOMContentLoaded', async () => { await loadCategories(); await loadQuestions(); });
+
+    async function loadCategories() {
+        const select = document.getElementById('categoryId');
+        const { data, error } = await supabaseClient.from('categories').select('*').order('id', { ascending:true });
+        if (error) { select.innerHTML = '<option value="">分類載入失敗</option>'; showStatus('分類載入失敗：' + error.message, 'error'); return; }
+        categories = data || [];
+        select.innerHTML = '<option value="">請選擇學科與單元</option>' + categories.map(c => `<option value="${c.id}">${escapeHtml(c.subject_name)} — ${escapeHtml(c.unit_name)}</option>`).join('');
+    }
+
+    async function loadQuestions() {
+        const { data, error } = await supabaseClient.from('questions').select('*').order('id', { ascending:true });
+        if (error) { document.getElementById('questionTableBody').innerHTML = `<tr><td colspan="5" class="empty">資料載入失敗：${escapeHtml(error.message)}</td></tr>`; return; }
+        questions = data || []; renderQuestions();
+    }
+
+    function renderQuestions() {
+        const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+        const filtered = questions.filter(q => {
+            const category = categories.find(c => String(c.id) === String(q.category_id));
+            const text = `${q.question_text || ''} ${category?.subject_name || ''} ${category?.unit_name || ''}`.toLowerCase();
+            return text.includes(keyword);
+        });
+        const tbody = document.getElementById('questionTableBody');
+        if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">目前沒有符合條件的試題。</td></tr>'; return; }
+        tbody.innerHTML = filtered.map(q => {
+            const c = categories.find(item => String(item.id) === String(q.category_id));
+            const categoryName = c ? `${c.subject_name} — ${c.unit_name}` : `分類 ID: ${q.category_id}`;
+            return `<tr><td><span class="badge">${q.id}</span></td><td>${escapeHtml(categoryName)}</td><td class="question-preview" title="${escapeHtml(q.question_text)}">${escapeHtml(q.question_text)}</td><td><strong>${escapeHtml(q.correct_answer)}</strong></td><td><div class="actions"><button class="action-btn btn-edit" onclick="startEdit(${q.id})">✏️ 編輯</button><button class="action-btn btn-danger" onclick="deleteQuestion(${q.id})">🗑️ 刪除</button></div></td></tr>`;
+        }).join('');
+    }
+
+    async function handleSubmit(event) {
+        event.preventDefault();
+        const payload = { category_id: document.getElementById('categoryId').value, question_text: document.getElementById('questionText').value.trim(), option_a: document.getElementById('optionA').value.trim(), option_b: document.getElementById('optionB').value.trim(), option_c: document.getElementById('optionC').value.trim(), option_d: document.getElementById('optionD').value.trim(), correct_answer: document.getElementById('correctAnswer').value, explanation: document.getElementById('explanation').value.trim() };
+        const id = document.getElementById('questionId').value;
+        const result = isEditing ? await supabaseClient.from('questions').update(payload).eq('id', id) : await supabaseClient.from('questions').insert([payload]);
+        if (result.error) { showStatus((isEditing ? '更新' : '新增') + '失敗：' + result.error.message, 'error'); return; }
+        showStatus(isEditing ? '🎉 試題更新成功！' : '🎉 試題新增成功！', 'success'); resetForm(); await loadQuestions();
+    }
+
+    function startEdit(id) {
+        const q = questions.find(item => String(item.id) === String(id)); if (!q) return;
+        isEditing = true; document.getElementById('questionId').value = q.id; document.getElementById('categoryId').value = q.category_id; document.getElementById('questionText').value = q.question_text || ''; document.getElementById('optionA').value = q.option_a || ''; document.getElementById('optionB').value = q.option_b || ''; document.getElementById('optionC').value = q.option_c || ''; document.getElementById('optionD').value = q.option_d || ''; document.getElementById('correctAnswer').value = q.correct_answer || ''; document.getElementById('explanation').value = q.explanation || '';
+        document.getElementById('formTitle').textContent = `✏️ 編輯試題 (ID: ${q.id})`; document.getElementById('submitBtn').textContent = '儲存修改'; document.getElementById('submitBtn').className = 'btn btn-edit'; document.getElementById('cancelBtn').style.display = 'inline-block'; window.scrollTo({ top:0, behavior:'smooth' });
+    }
+
+    async function deleteQuestion(id) {
+        if (!confirm('確定要刪除這題嗎？刪除後無法復原。')) return;
+        const { error } = await supabaseClient.from('questions').delete().eq('id', id);
+        if (error) { showStatus('刪除失敗：' + error.message, 'error'); return; }
+        if (String(document.getElementById('questionId').value) === String(id)) resetForm();
+        showStatus('🗑️ 試題已刪除。', 'success'); await loadQuestions();
+    }
+
+    function resetForm() { isEditing = false; document.getElementById('questionForm').reset(); document.getElementById('questionId').value = ''; document.getElementById('formTitle').textContent = '✨ 新增試題'; document.getElementById('submitBtn').textContent = '確認新增'; document.getElementById('submitBtn').className = 'btn btn-primary'; document.getElementById('cancelBtn').style.display = 'none'; }
+    function showStatus(message, type) { const el = document.getElementById('formStatus'); el.textContent = message; el.className = `status ${type}`; }
+    function escapeHtml(value) { return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+</script>
+</body>
+</html>
